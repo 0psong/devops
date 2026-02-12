@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"io"
@@ -15,15 +16,11 @@ type Encryptor struct {
 }
 
 // NewEncryptor creates an Encryptor with the given key.
-// If the key is shorter than 32 bytes, it is zero-padded to 32 bytes.
+// Uses SHA-256 to derive a consistent 32-byte key from input of any length,
+// ensuring strong entropy regardless of input key quality.
 func NewEncryptor(key string) *Encryptor {
-	k := []byte(key)
-	if len(k) < 32 {
-		padded := make([]byte, 32)
-		copy(padded, k)
-		k = padded
-	}
-	return &Encryptor{key: k[:32]}
+	h := sha256.Sum256([]byte(key))
+	return &Encryptor{key: h[:]}
 }
 
 // Encrypt encrypts plaintext using AES-256-GCM and returns a base64-encoded string.

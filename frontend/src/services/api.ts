@@ -20,6 +20,19 @@ api.interceptors.request.use(
   }
 )
 
+// Map HTTP status codes to user-friendly messages (avoid leaking internal details)
+const httpErrorMessages: Record<number, string> = {
+  400: '请求参数错误',
+  401: '登录已过期，请重新登录',
+  403: '无权限访问该资源',
+  404: '请求的资源不存在',
+  408: '请求超时，请重试',
+  429: '请求过于频繁，请稍后再试',
+  500: '服务器内部错误',
+  502: '网关错误',
+  503: '服务暂时不可用',
+}
+
 // Response interceptor
 api.interceptors.response.use(
   (response) => {
@@ -38,7 +51,10 @@ api.interceptors.response.use(
       }
       return Promise.reject(error)
     }
-    message.error(error.response?.data?.message || error.message || '网络错误')
+    // Use generic error messages instead of exposing backend details
+    const status = error.response?.status || 0
+    const userMessage = httpErrorMessages[status] || '网络错误，请检查网络连接'
+    message.error(userMessage)
     return Promise.reject(error)
   }
 )

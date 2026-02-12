@@ -13,12 +13,17 @@ import (
 	"devops/internal/config"
 	auditHandler "devops/internal/handler/audit"
 	authHandler "devops/internal/handler/auth"
+	cloudHandler "devops/internal/handler/cloud"
 	configHandler "devops/internal/handler/config"
+	dashboardHandler "devops/internal/handler/dashboard"
 	deployHandler "devops/internal/handler/deploy"
 	groupHandler "devops/internal/handler/group"
 	k8sHandler "devops/internal/handler/k8s"
 	monitorHandler "devops/internal/handler/monitor"
+	pipelineHandler "devops/internal/handler/pipeline"
+	pipelineV2Handler "devops/internal/handler/pipeline_v2"
 	userHandler "devops/internal/handler/user"
+	versionHandler "devops/internal/handler/version"
 	"devops/internal/middleware"
 	"devops/internal/model"
 	"devops/internal/pkg/jwt"
@@ -61,6 +66,17 @@ func main() {
 	configHistoryRepo := repository.NewConfigHistoryRepository(db)
 	clusterRepo := repository.NewClusterRepository(db)
 	k8sHistoryRepo := repository.NewK8sYAMLHistoryRepository(db)
+	versionRepo := repository.NewVersionRepository(db)
+	pipelineRepo := repository.NewPipelineRepository(db)
+	cloudAccountRepo := repository.NewCloudAccountRepository(db)
+	cloudInstanceRepo := repository.NewCloudInstanceRepository(db)
+	nodePoolRepo := repository.NewNodePoolRepository(db)
+	pipelineDefRepo := repository.NewPipelineDefinitionRepository(db)
+	pipelineRunRepo := repository.NewPipelineRunRepository(db)
+	stageRunRepo := repository.NewStageRunRepository(db)
+	stepRunRepo := repository.NewStepRunRepository(db)
+	artifactRepo := repository.NewArtifactRepository(db)
+	approvalRepo := repository.NewApprovalRepository(db)
 
 	// Initialize default data
 	if err := roleRepo.InitDefaultRoles(); err != nil {
@@ -84,6 +100,11 @@ func main() {
 	envService := service.NewEnvService(envRepo)
 	configService := service.NewConfigService(configRepo, configHistoryRepo, cfg.JWT.Secret)
 	k8sService := service.NewK8sService(clusterRepo, k8sHistoryRepo, cfg.JWT.Secret)
+	dashboardSvc := service.NewDashboardService(db)
+	versionService := service.NewVersionService(versionRepo, appRepo)
+	pipelineService := service.NewPipelineService(pipelineRepo, appRepo)
+	cloudService := service.NewCloudService(cloudAccountRepo, cloudInstanceRepo, nodePoolRepo, hostRepo, cfg.JWT.Secret)
+	pipelineV2Service := service.NewPipelineV2Service(pipelineDefRepo, pipelineRunRepo, stageRunRepo, stepRunRepo, artifactRepo, approvalRepo, appRepo)
 
 	// Initialize admin user
 	if err := authService.InitAdminUser(); err != nil {
@@ -104,6 +125,11 @@ func main() {
 	deployH := deployHandler.NewHandler(appService, deployService, envService)
 	configH := configHandler.NewHandler(configService)
 	k8sH := k8sHandler.NewHandler(k8sService)
+	dashboardH := dashboardHandler.NewHandler(dashboardSvc)
+	versionH := versionHandler.NewHandler(versionService)
+	pipelineH := pipelineHandler.NewHandler(pipelineService)
+	cloudH := cloudHandler.NewHandler(cloudService)
+	pipelineV2H := pipelineV2Handler.NewHandler(pipelineV2Service)
 
 	// Setup Gin
 	if cfg.Server.Mode == "release" {
@@ -114,6 +140,7 @@ func main() {
 
 	// Middleware
 	r.Use(middleware.CORS())
+	r.Use(middleware.SecurityHeaders())
 
 	// Health check with database verification
 	r.GET("/health", func(c *gin.Context) {
@@ -132,8 +159,9 @@ func main() {
 	// API routes
 	api := r.Group("/api/v1")
 	{
-		// Public routes
+		// Public routes (with rate limiting to prevent brute force)
 		auth := api.Group("/auth")
+		auth.Use(middleware.RateLimit(10, time.Minute)) // 10 requests per minute per IP
 		authH.RegisterRoutes(auth)
 
 		// Protected routes
@@ -165,13 +193,33 @@ func main() {
 
 		// K8s cluster routes (with permission check)
 		k8sH.RegisterRoutes(protected)
+
+		// Dashboard routes
+		dashboardH.RegisterRoutes(protected)
+
+		// Version routes
+		versionH.RegisterRoutes(protected)
+
+		// Pipeline routes
+		pipelineH.RegisterRoutes(protected)
+
+		// Cloud resource management routes
+		cloudH.RegisterRoutes(protected)
+
+		// Pipeline V2 (advanced) routes
+		pipelineV2H.RegisterRoutes(protected)
 	}
 
-	// Start server with graceful shutdown
+	// Start server with graceful shutdown and security timeouts
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)
 	srv := &http.Server{
-		Addr:    addr,
-		Handler: r,
+		Addr:              addr,
+		Handler:           r,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1MB
 	}
 
 	go func() {
@@ -249,6 +297,26 @@ func initDefaultPermissions(permRepo *repository.PermissionRepository, roleRepo 
 		// 审计日志
 		{"查看审计", "audit:view", "api", "audit", "view"},
 		{"导出审计", "audit:export", "api", "audit", "execute"},
+		// 云资源管理
+		{"查看云资源", "cloud:view", "api", "cloud", "view"},
+		{"创建云资源", "cloud:create", "api", "cloud", "create"},
+		{"更新云资源", "cloud:update", "api", "cloud", "update"},
+		{"删除云资源", "cloud:delete", "api", "cloud", "delete"},
+		{"操作云资源", "cloud:operate", "api", "cloud", "execute"},
+		// 高级流水线
+		{"查看流水线定义", "pipeline-def:view", "api", "pipeline-def", "view"},
+		{"创建流水线定义", "pipeline-def:create", "api", "pipeline-def", "create"},
+		{"更新流水线定义", "pipeline-def:update", "api", "pipeline-def", "update"},
+		{"删除流水线定义", "pipeline-def:delete", "api", "pipeline-def", "delete"},
+		{"查看流水线运行", "pipeline-run:view", "api", "pipeline-run", "view"},
+		{"触发流水线运行", "pipeline-run:trigger", "api", "pipeline-run", "execute"},
+		{"取消流水线运行", "pipeline-run:cancel", "api", "pipeline-run", "execute"},
+		// 审批
+		{"查看审批", "approval:view", "api", "approval", "view"},
+		{"操作审批", "approval:operate", "api", "approval", "execute"},
+		// 制品
+		{"查看制品", "artifact:view", "api", "artifact", "view"},
+		{"删除制品", "artifact:delete", "api", "artifact", "delete"},
 	}
 
 	for _, p := range permissions {

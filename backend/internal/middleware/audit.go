@@ -2,7 +2,11 @@ package middleware
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"io"
+	"log"
+	"strings"
 	"time"
 
 	"devops/internal/model"
@@ -30,10 +34,11 @@ func AuditLog(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Read request body
+		// Read request body (limit to 1MB to prevent memory exhaustion)
 		var requestBody []byte
 		if c.Request.Body != nil {
-			requestBody, _ = io.ReadAll(c.Request.Body)
+			limited := io.LimitReader(c.Request.Body, 1<<20) // 1MB max
+			requestBody, _ = io.ReadAll(limited)
 			c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
 		}
 
@@ -62,28 +67,32 @@ func AuditLog(db *gorm.DB) gin.HandlerFunc {
 			status = 0
 		}
 
-		// Create audit log
+		// Create audit log with sanitized body
 		auditLog := &model.AuditLog{
 			UserID:     userID,
 			Username:   username,
 			Action:     action,
 			Resource:   c.FullPath(),
 			ResourceID: c.Param("id"),
-			Detail:     string(requestBody),
+			Detail:     sanitizeBody(requestBody),
 			IP:         c.ClientIP(),
 			UserAgent:  c.Request.UserAgent(),
 			Status:     status,
 			CreatedAt:  startTime,
 		}
 
-		// Async save to database
-		go func(log *model.AuditLog) {
+		// Async save to database with timeout to prevent goroutine leaks
+		go func(auditEntry *model.AuditLog) {
 			defer func() {
 				if r := recover(); r != nil {
-					// Prevent goroutine panic from crashing the process
+					log.Printf("Panic in audit log goroutine: %v", r)
 				}
 			}()
-			db.Create(log)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := db.WithContext(ctx).Create(auditEntry).Error; err != nil {
+				log.Printf("Failed to save audit log: %v", err)
+			}
 		}(auditLog)
 	}
 }
@@ -99,4 +108,38 @@ func getAction(method, path string) string {
 	default:
 		return method
 	}
+}
+
+// sanitizeBody removes sensitive fields from the request body before storing in audit log
+func sanitizeBody(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return "[non-json body]"
+	}
+
+	sensitiveFields := []string{
+		"password", "old_password", "new_password",
+		"private_key", "kubeconfig", "token", "secret",
+		"kube_config",
+	}
+
+	for key := range data {
+		lower := strings.ToLower(key)
+		for _, sf := range sensitiveFields {
+			if lower == sf || strings.Contains(lower, sf) {
+				data[key] = "[REDACTED]"
+				break
+			}
+		}
+	}
+
+	sanitized, err := json.Marshal(data)
+	if err != nil {
+		return "[marshal error]"
+	}
+	return string(sanitized)
 }
