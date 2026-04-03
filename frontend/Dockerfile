@@ -31,9 +31,6 @@ RUN chown -R nginx:nginx /usr/share/nginx/html && \
     touch /var/run/nginx.pid && \
     chown -R nginx:nginx /var/run/nginx.pid
 
-# Run as non-root user
-USER nginx
-
 # Expose port
 EXPOSE 80
 

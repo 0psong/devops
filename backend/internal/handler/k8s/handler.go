@@ -37,7 +37,14 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 		clusters.GET("/:id/namespaces", h.GetNamespaces)
 		clusters.GET("/:id/deployments", h.GetDeployments)
 		clusters.GET("/:id/pods", h.GetPods)
+		clusters.GET("/:id/pods/logs", h.GetPodLogs)
+		clusters.GET("/:id/pods/containers", h.GetPodContainers)
 		clusters.GET("/:id/services", h.GetServices)
+		clusters.GET("/:id/deployments/:ns/:name/revisions", h.GetDeploymentRevisions)
+		clusters.POST("/:id/deployments/:ns/:name/rollback", h.RollbackDeployment)
+		clusters.POST("/:id/nodes/:name/cordon", h.CordonNode)
+		clusters.POST("/:id/nodes/:name/uncordon", h.UncordonNode)
+		clusters.POST("/:id/nodes/:name/drain", h.DrainNode)
 	}
 }
 
@@ -351,6 +358,147 @@ func (h *Handler) FormatYAML(c *gin.Context) {
 	}
 
 	response.Success(c, formatted)
+}
+
+func (h *Handler) GetPodLogs(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, "无效的ID")
+		return
+	}
+
+	namespace := c.Query("namespace")
+	podName := c.Query("pod")
+	container := c.Query("container")
+	if podName == "" {
+		response.BadRequest(c, "需要提供 pod 名称")
+		return
+	}
+
+	tailLines := int64(getIntParam(c, "tail", 200))
+	previous := c.Query("previous") == "true"
+
+	logs, err := h.k8sService.GetPodLogs(id, namespace, podName, container, tailLines, previous)
+	if err != nil {
+		response.ServerError(c, err.Error())
+		return
+	}
+
+	response.Success(c, logs)
+}
+
+func (h *Handler) GetPodContainers(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, "无效的ID")
+		return
+	}
+
+	namespace := c.Query("namespace")
+	podName := c.Query("pod")
+	if podName == "" {
+		response.BadRequest(c, "需要提供 pod 名称")
+		return
+	}
+
+	containers, err := h.k8sService.GetPodContainers(id, namespace, podName)
+	if err != nil {
+		response.ServerError(c, err.Error())
+		return
+	}
+
+	response.Success(c, containers)
+}
+
+func (h *Handler) GetDeploymentRevisions(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, "无效的ID")
+		return
+	}
+
+	ns := c.Param("ns")
+	name := c.Param("name")
+
+	revisions, err := h.k8sService.GetDeploymentRevisions(id, ns, name)
+	if err != nil {
+		response.ServerError(c, err.Error())
+		return
+	}
+
+	response.Success(c, revisions)
+}
+
+func (h *Handler) RollbackDeployment(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, "无效的ID")
+		return
+	}
+
+	ns := c.Param("ns")
+	name := c.Param("name")
+
+	var req service.RollbackRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	if err := h.k8sService.RollbackDeployment(id, ns, name, req.Revision); err != nil {
+		response.ServerError(c, err.Error())
+		return
+	}
+
+	response.SuccessWithMessage(c, "回滚成功", nil)
+}
+
+func (h *Handler) CordonNode(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, "无效的ID")
+		return
+	}
+
+	nodeName := c.Param("name")
+	if err := h.k8sService.CordonNode(id, nodeName); err != nil {
+		response.ServerError(c, err.Error())
+		return
+	}
+
+	response.SuccessWithMessage(c, "节点已标记为不可调度", nil)
+}
+
+func (h *Handler) UncordonNode(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, "无效的ID")
+		return
+	}
+
+	nodeName := c.Param("name")
+	if err := h.k8sService.UncordonNode(id, nodeName); err != nil {
+		response.ServerError(c, err.Error())
+		return
+	}
+
+	response.SuccessWithMessage(c, "节点已恢复调度", nil)
+}
+
+func (h *Handler) DrainNode(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, "无效的ID")
+		return
+	}
+
+	nodeName := c.Param("name")
+	if err := h.k8sService.DrainNode(id, nodeName); err != nil {
+		response.ServerError(c, err.Error())
+		return
+	}
+
+	response.SuccessWithMessage(c, "节点排空完成", nil)
 }
 
 func getIntParam(c *gin.Context, key string, defaultVal int) int {

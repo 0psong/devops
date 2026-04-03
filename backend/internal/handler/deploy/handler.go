@@ -218,6 +218,12 @@ func (h *Handler) StartDeployment(c *gin.Context) {
 		return
 	}
 
+	claims := middleware.GetCurrentUser(c)
+	if claims == nil {
+		response.Error(c, 4010, "未登录")
+		return
+	}
+
 	if err := h.deployService.StartDeploy(id); err != nil {
 		response.ServerError(c, err.Error())
 		return
@@ -238,6 +244,10 @@ func (h *Handler) Rollback(c *gin.Context) {
 	}
 
 	claims := middleware.GetCurrentUser(c)
+	if claims == nil {
+		response.Error(c, 4010, "未登录")
+		return
+	}
 	deployment, err := h.deployService.Rollback(req.AppID, req.TargetDeployID, claims.UserID)
 	if err != nil {
 		response.ServerError(c, err.Error())

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   Card,
   Table,
@@ -28,76 +28,12 @@ import {
   SyncOutlined,
   EyeOutlined,
   DeleteOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { appService, Application } from '@/services/app'
-
-interface Pipeline {
-  id: string
-  name: string
-  app_id: string
-  app_name: string
-  branch: string
-  status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
-  trigger: string
-  stages: PipelineStage[]
-  duration: number
-  created_by: string
-  created_at: string
-  started_at: string
-  finished_at: string
-}
-
-interface PipelineStage {
-  name: string
-  status: 'pending' | 'running' | 'success' | 'failed' | 'skipped'
-  duration: number
-  log: string
-}
-
-// Mock data for demo
-const mockPipelines: Pipeline[] = [
-  {
-    id: '1', name: '生产部署流水线', app_id: '1', app_name: 'web-frontend',
-    branch: 'main', status: 'success', trigger: 'manual',
-    stages: [
-      { name: '代码拉取', status: 'success', duration: 5, log: 'Cloning repository...\nDone.' },
-      { name: '代码构建', status: 'success', duration: 45, log: 'npm install...\nnpm run build...\nBuild completed.' },
-      { name: '单元测试', status: 'success', duration: 30, log: 'Running tests...\n42 passed, 0 failed.' },
-      { name: '镜像打包', status: 'success', duration: 20, log: 'Building docker image...\nPushed to registry.' },
-      { name: '部署发布', status: 'success', duration: 15, log: 'Deploying to production...\nRollout complete.' },
-    ],
-    duration: 115, created_by: 'admin', created_at: '2026-01-27T10:00:00Z',
-    started_at: '2026-01-27T10:00:05Z', finished_at: '2026-01-27T10:01:55Z',
-  },
-  {
-    id: '2', name: '测试环境部署', app_id: '2', app_name: 'api-gateway',
-    branch: 'develop', status: 'running', trigger: 'webhook',
-    stages: [
-      { name: '代码拉取', status: 'success', duration: 3, log: 'Done.' },
-      { name: '代码构建', status: 'success', duration: 60, log: 'go build...\nDone.' },
-      { name: '单元测试', status: 'running', duration: 0, log: 'Running tests...' },
-      { name: '镜像打包', status: 'pending', duration: 0, log: '' },
-      { name: '部署发布', status: 'pending', duration: 0, log: '' },
-    ],
-    duration: 63, created_by: 'admin', created_at: '2026-01-27T11:00:00Z',
-    started_at: '2026-01-27T11:00:02Z', finished_at: '',
-  },
-  {
-    id: '3', name: '预发布环境', app_id: '1', app_name: 'web-frontend',
-    branch: 'release/v2.1', status: 'failed', trigger: 'manual',
-    stages: [
-      { name: '代码拉取', status: 'success', duration: 4, log: 'Done.' },
-      { name: '代码构建', status: 'success', duration: 50, log: 'Build done.' },
-      { name: '单元测试', status: 'failed', duration: 25, log: 'FAIL: TestAuth - expected 200, got 401' },
-      { name: '镜像打包', status: 'skipped', duration: 0, log: '' },
-      { name: '部署发布', status: 'skipped', duration: 0, log: '' },
-    ],
-    duration: 79, created_by: 'dev01', created_at: '2026-01-26T15:30:00Z',
-    started_at: '2026-01-26T15:30:03Z', finished_at: '2026-01-26T15:31:22Z',
-  },
-]
+import { pipelineService, Pipeline, PipelineStage } from '@/services/pipeline'
 
 const statusConfig: Record<string, { text: string; color: string; icon: React.ReactNode }> = {
   pending: { text: '等待中', color: 'default', icon: <ClockCircleOutlined /> },
@@ -109,13 +45,33 @@ const statusConfig: Record<string, { text: string; color: string; icon: React.Re
 }
 
 const PipelineList: React.FC = () => {
-  const [pipelines, setPipelines] = useState<Pipeline[]>(mockPipelines)
-  const [loading] = useState(false)
+  const [pipelines, setPipelines] = useState<Pipeline[]>([])
+  const [loading, setLoading] = useState(false)
   const [apps, setApps] = useState<Application[]>([])
   const [modalVisible, setModalVisible] = useState(false)
   const [detailVisible, setDetailVisible] = useState(false)
   const [currentPipeline, setCurrentPipeline] = useState<Pipeline | null>(null)
   const [form] = Form.useForm()
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+
+  const fetchPipelines = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await pipelineService.list({ page, page_size: pageSize })
+      setPipelines(res.data.list || [])
+      setTotal(res.data.total || 0)
+    } catch {
+      message.error('获取流水线列表失败')
+    } finally {
+      setLoading(false)
+    }
+  }, [page, pageSize])
+
+  useEffect(() => {
+    fetchPipelines()
+  }, [fetchPipelines])
 
   useEffect(() => {
     const fetchApps = async () => {
@@ -130,43 +86,43 @@ const PipelineList: React.FC = () => {
   const handleCreate = async () => {
     try {
       const values = await form.validateFields()
-      const newPipeline: Pipeline = {
-        id: String(Date.now()),
+      await pipelineService.create({
         name: values.name,
         app_id: values.app_id,
-        app_name: apps.find((a) => a.id === values.app_id)?.name || '',
-        branch: values.branch || 'main',
-        status: 'pending',
-        trigger: 'manual',
-        stages: [
-          { name: '代码拉取', status: 'pending', duration: 0, log: '' },
-          { name: '代码构建', status: 'pending', duration: 0, log: '' },
-          { name: '单元测试', status: 'pending', duration: 0, log: '' },
-          { name: '镜像打包', status: 'pending', duration: 0, log: '' },
-          { name: '部署发布', status: 'pending', duration: 0, log: '' },
-        ],
-        duration: 0,
-        created_by: 'admin',
-        created_at: new Date().toISOString(),
-        started_at: '',
-        finished_at: '',
-      }
-      setPipelines([newPipeline, ...pipelines])
+        branch: values.branch || undefined,
+        trigger: values.trigger || undefined,
+      })
       setModalVisible(false)
+      form.resetFields()
       message.success('流水线已创建')
+      fetchPipelines()
     } catch { message.error('创建流水线失败') }
   }
 
-  const handleRun = (p: Pipeline) => {
-    setPipelines(pipelines.map((item) =>
-      item.id === p.id ? { ...item, status: 'running' as const, started_at: new Date().toISOString() } : item
-    ))
-    message.success('流水线已触发')
+  const handleRun = async (p: Pipeline) => {
+    try {
+      await pipelineService.run(p.id)
+      message.success('流水线已触发')
+      fetchPipelines()
+    } catch { message.error('触发流水线失败') }
   }
 
-  const handleDelete = (id: string) => {
-    setPipelines(pipelines.filter((p) => p.id !== id))
-    message.success('已删除')
+  const handleDelete = async (id: string) => {
+    try {
+      await pipelineService.delete(id)
+      message.success('已删除')
+      fetchPipelines()
+    } catch { message.error('删除失败') }
+  }
+
+  const handleViewDetail = async (record: Pipeline) => {
+    try {
+      const res = await pipelineService.get(record.id)
+      setCurrentPipeline(res.data)
+    } catch {
+      setCurrentPipeline(record)
+    }
+    setDetailVisible(true)
   }
 
   const successCount = pipelines.filter((p) => p.status === 'success').length
@@ -180,7 +136,7 @@ const PipelineList: React.FC = () => {
       key: 'name',
       width: 200,
       render: (name: string, record) => (
-        <a onClick={() => { setCurrentPipeline(record); setDetailVisible(true) }}>
+        <a onClick={() => handleViewDetail(record)}>
           <Space>
             <BranchesOutlined />
             {name}
@@ -190,10 +146,9 @@ const PipelineList: React.FC = () => {
     },
     {
       title: '应用',
-      dataIndex: 'app_name',
       key: 'app_name',
       width: 140,
-      render: (v: string) => <Tag>{v}</Tag>,
+      render: (_: unknown, record) => <Tag>{record.app?.name || '-'}</Tag>,
     },
     {
       title: '分支',
@@ -217,11 +172,12 @@ const PipelineList: React.FC = () => {
       key: 'progress',
       width: 180,
       render: (_, record) => {
-        const done = record.stages.filter((s) => s.status === 'success').length
-        const total = record.stages.length
-        const pct = Math.round((done / total) * 100)
+        const stages = record.stages || []
+        const done = stages.filter((s: PipelineStage) => s.status === 'success').length
+        const stageTotal = stages.length
+        const pct = stageTotal > 0 ? Math.round((done / stageTotal) * 100) : 0
         const color = record.status === 'failed' ? '#ff4d4f' : record.status === 'success' ? '#52c41a' : '#0ea5e9'
-        return <Progress percent={pct} size="small" strokeColor={color} format={() => `${done}/${total}`} />
+        return <Progress percent={pct} size="small" strokeColor={color} format={() => `${done}/${stageTotal}`} />
       },
     },
     {
@@ -252,7 +208,7 @@ const PipelineList: React.FC = () => {
       render: (_, record) => (
         <Space>
           <Tooltip title="查看">
-            <Button size="small" icon={<EyeOutlined />} onClick={() => { setCurrentPipeline(record); setDetailVisible(true) }} />
+            <Button size="small" icon={<EyeOutlined />} onClick={() => handleViewDetail(record)} />
           </Tooltip>
           {(record.status === 'pending' || record.status === 'failed') && (
             <Tooltip title="运行">
@@ -282,9 +238,12 @@ const PipelineList: React.FC = () => {
           <p className="page-hero-subtitle">管理持续集成和持续部署流水线</p>
         </div>
         <div className="page-hero-actions">
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModalVisible(true) }}>
-            新建流水线
-          </Button>
+          <Space>
+            <Button icon={<ReloadOutlined />} onClick={fetchPipelines}>刷新</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModalVisible(true) }}>
+              新建流水线
+            </Button>
+          </Space>
         </div>
       </div>
 
@@ -306,7 +265,13 @@ const PipelineList: React.FC = () => {
           dataSource={pipelines}
           rowKey="id"
           loading={loading}
-          pagination={{ pageSize: 10, showTotal: (t) => `共 ${t} 条` }}
+          pagination={{
+            current: page,
+            pageSize: pageSize,
+            total: total,
+            showTotal: (t) => `共 ${t} 条`,
+            onChange: (p, ps) => { setPage(p); setPageSize(ps) },
+          }}
           scroll={{ x: 1400 }}
         />
       </Card>
@@ -352,7 +317,7 @@ const PipelineList: React.FC = () => {
           <>
             <div style={{ marginBottom: 24 }}>
               <Space>
-                <Tag>{currentPipeline.app_name}</Tag>
+                <Tag>{currentPipeline.app?.name || '-'}</Tag>
                 <code>{currentPipeline.branch}</code>
                 {(() => {
                   const cfg = statusConfig[currentPipeline.status]
@@ -365,8 +330,8 @@ const PipelineList: React.FC = () => {
             <h4 style={{ marginBottom: 16 }}>阶段进度</h4>
             <Steps
               size="small"
-              current={currentPipeline.stages.findIndex((s) => s.status === 'running')}
-              items={currentPipeline.stages.map((s) => ({
+              current={(currentPipeline.stages || []).findIndex((s: PipelineStage) => s.status === 'running')}
+              items={(currentPipeline.stages || []).map((s: PipelineStage) => ({
                 title: s.name,
                 status: getStepStatus(s.status),
                 description: s.duration ? `${s.duration}s` : undefined,
@@ -376,7 +341,7 @@ const PipelineList: React.FC = () => {
 
             <h4 style={{ marginBottom: 16 }}>执行日志</h4>
             <Timeline
-              items={currentPipeline.stages.map((s) => ({
+              items={(currentPipeline.stages || []).map((s: PipelineStage) => ({
                 color: s.status === 'success' ? 'green' : s.status === 'failed' ? 'red' : s.status === 'running' ? 'blue' : 'gray',
                 children: (
                   <div>

@@ -74,7 +74,6 @@ const ClusterList: React.FC = () => {
     setEditingCluster(record)
     form.setFieldsValue({
       name: record.name,
-      code: record.code,
       api_server: record.api_server,
       env_code: record.env_code,
       description: record.description,
@@ -158,10 +157,9 @@ const ClusterList: React.FC = () => {
         <Tooltip title={statusText(status)}>{statusIcon(status)}</Tooltip>
       ),
     },
-    { title: '集群名称', dataIndex: 'name', key: 'name', width: 150 },
-    { title: '集群代码', dataIndex: 'code', key: 'code', width: 120 },
+    { title: '集群名称', dataIndex: 'name', key: 'name', width: 160 },
     { title: '版本', dataIndex: 'version', key: 'version', width: 100 },
-    { title: 'API Server', dataIndex: 'api_server', key: 'api_server', width: 200, ellipsis: true },
+    { title: 'API Server', dataIndex: 'api_server', key: 'api_server', width: 240, ellipsis: true },
     {
       title: '环境',
       dataIndex: 'env_code',
@@ -250,6 +248,7 @@ const ClusterList: React.FC = () => {
           dataSource={clusters}
           rowKey="id"
           loading={loading}
+          scroll={{ x: 1200 }}
           pagination={{
             current: page,
             pageSize,
@@ -274,9 +273,6 @@ const ClusterList: React.FC = () => {
         <Form form={form} layout="vertical">
           <Form.Item name="name" label="集群名称" rules={[{ required: true, message: '请输入集群名称' }]}>
             <Input placeholder="production-cluster" />
-          </Form.Item>
-          <Form.Item name="code" label="集群代码" rules={[{ required: true, message: '请输入集群代码' }]}>
-            <Input placeholder="prod-k8s" disabled={!!editingCluster} />
           </Form.Item>
           <Form.Item name="api_server" label="API Server" rules={[{ required: true, message: '请输入 API Server 地址' }]}>
             <Input placeholder="https://k8s-api.example.com:6443" />

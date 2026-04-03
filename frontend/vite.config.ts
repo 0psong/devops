@@ -4,6 +4,9 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  esbuild: {
+    drop: ['console', 'debugger'],
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -23,23 +26,37 @@ export default defineConfig({
     chunkSizeWarningLimit: 500,
     rollupOptions: {
       output: {
-        // Code splitting: separate large vendor libraries into their own chunks
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-antd': ['antd', '@ant-design/icons'],
-          'vendor-echarts': ['echarts', 'echarts-for-react'],
+        // Split large vendor dependencies into smaller cacheable chunks.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return
+          }
+
+          if (
+            id.includes('/react/') ||
+            id.includes('/react-dom/') ||
+            id.includes('/react-router-dom/')
+          ) {
+            return 'vendor-react'
+          }
+
+          if (
+            id.includes('/echarts/') ||
+            id.includes('/echarts-for-react/') ||
+            id.includes('/zrender/')
+          ) {
+            return 'vendor-echarts'
+          }
+
+          if (id.includes('/dayjs/')) {
+            return 'vendor-dayjs'
+          }
         },
       },
     },
     // Enable source maps for production debugging (disable if not needed)
     sourcemap: false,
-    // Minification
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true, // Remove console.log in production
-        drop_debugger: true,
-      },
-    },
+    // Use Vite's default esbuild minifier to avoid requiring terser at build time.
+    minify: 'esbuild',
   },
 })

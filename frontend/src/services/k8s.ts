@@ -191,6 +191,13 @@ export const k8sService = {
   getPods: (id: string, namespace?: string) =>
     api.get<unknown, { data: K8sResource[] }>(`/clusters/${id}/pods`, { params: { namespace } }),
 
+  // Pod logs
+  getPodLogs: (id: string, params: { pod: string; namespace?: string; container?: string; tail?: number; previous?: boolean }) =>
+    api.get<unknown, { data: string }>(`/clusters/${id}/pods/logs`, { params }),
+
+  getPodContainers: (id: string, params: { pod: string; namespace?: string }) =>
+    api.get<unknown, { data: string[] }>(`/clusters/${id}/pods/containers`, { params }),
+
   // Deployment operations
   createDeployment: (id: string, data: CreateWorkloadParams) =>
     api.post<unknown, { data: K8sResource }>(`/clusters/${id}/deployments`, data),

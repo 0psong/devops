@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"log"
 
 	"devops/internal/model"
@@ -190,9 +191,10 @@ func (s *ConfigService) GetByID(id uuid.UUID, decrypt bool) (*model.ConfigItem, 
 
 	if decrypt && config.IsSecret {
 		decrypted, err := s.encryptor.Decrypt(config.Value)
-		if err == nil {
-			config.Value = decrypted
+		if err != nil {
+			return nil, fmt.Errorf("decrypt config value: %w", err)
 		}
+		config.Value = decrypted
 	}
 
 	return config, nil
@@ -212,9 +214,10 @@ func (s *ConfigService) GetByEnvAndApp(envCode, appCode string, decrypt bool) ([
 		for i := range configs {
 			if configs[i].IsSecret {
 				decrypted, err := s.encryptor.Decrypt(configs[i].Value)
-				if err == nil {
-					configs[i].Value = decrypted
+				if err != nil {
+					return nil, fmt.Errorf("decrypt config %s: %w", configs[i].Key, err)
 				}
+				configs[i].Value = decrypted
 			}
 		}
 	}

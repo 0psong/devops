@@ -24,14 +24,12 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	{
 		configs.GET("", h.ListConfigs)
 		configs.POST("", h.CreateConfig)
+		configs.GET("/fetch", h.FetchConfigs) // Static route before dynamic /:id
 		configs.GET("/:id", h.GetConfig)
 		configs.PUT("/:id", h.UpdateConfig)
 		configs.DELETE("/:id", h.DeleteConfig)
 		configs.GET("/:id/history", h.GetConfigHistory)
 	}
-
-	// For application to fetch configs (requires auth)
-	configs.GET("/fetch", h.FetchConfigs)
 }
 
 func (h *Handler) ListConfigs(c *gin.Context) {

@@ -203,6 +203,7 @@ const AppList: React.FC = () => {
           dataSource={apps}
           rowKey="id"
           loading={loading}
+          scroll={{ x: 1000 }}
           pagination={{
             current: page,
             pageSize,

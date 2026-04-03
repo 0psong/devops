@@ -698,6 +698,303 @@ func (s *K8sService) GetResourceYAML(id uuid.UUID, kind, name, namespace string)
 	return string(data), nil
 }
 
+// --- Pod Logs ---
+
+func (s *K8sService) GetPodLogs(clusterID uuid.UUID, namespace, podName, container string, tailLines int64, previous bool) (string, error) {
+	client, err := s.getClientByClusterID(clusterID)
+	if err != nil {
+		return "", err
+	}
+
+	ctx := context.Background()
+	opts := &corev1.PodLogOptions{
+		TailLines: &tailLines,
+		Previous:  previous,
+	}
+	if container != "" {
+		opts.Container = container
+	}
+
+	req := client.CoreV1().Pods(namespace).GetLogs(podName, opts)
+	stream, err := req.Stream(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get pod logs: %w", err)
+	}
+	defer stream.Close()
+
+	buf := new(strings.Builder)
+	if _, err := io.Copy(buf, stream); err != nil {
+		return "", fmt.Errorf("read pod logs: %w", err)
+	}
+
+	return buf.String(), nil
+}
+
+func (s *K8sService) GetPodContainers(clusterID uuid.UUID, namespace, podName string) ([]string, error) {
+	client, err := s.getClientByClusterID(clusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	pod, err := client.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get pod: %w", err)
+	}
+
+	var containers []string
+	for _, c := range pod.Spec.Containers {
+		containers = append(containers, c.Name)
+	}
+	for _, c := range pod.Spec.InitContainers {
+		containers = append(containers, c.Name)
+	}
+
+	return containers, nil
+}
+
+// --- Deployment Revision & Rollback ---
+
+type RevisionInfo struct {
+	Revision  int64     `json:"revision"`
+	Name      string    `json:"name"`
+	Images    []string  `json:"images"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (s *K8sService) GetDeploymentRevisions(clusterID uuid.UUID, namespace, name string) ([]RevisionInfo, error) {
+	client, err := s.getClientByClusterID(clusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+
+	// Get the deployment
+	deploy, err := client.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get deployment: %w", err)
+	}
+
+	// List ReplicaSets owned by this deployment
+	selector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
+	if err != nil {
+		return nil, fmt.Errorf("parse selector: %w", err)
+	}
+
+	rsList, err := client.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: selector.String(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list replicasets: %w", err)
+	}
+
+	var revisions []RevisionInfo
+	for _, rs := range rsList.Items {
+		// Check ownership
+		owned := false
+		for _, ref := range rs.OwnerReferences {
+			if ref.UID == deploy.UID {
+				owned = true
+				break
+			}
+		}
+		if !owned {
+			continue
+		}
+
+		revStr, ok := rs.Annotations["deployment.kubernetes.io/revision"]
+		if !ok {
+			continue
+		}
+		var rev int64
+		fmt.Sscanf(revStr, "%d", &rev)
+
+		var images []string
+		for _, c := range rs.Spec.Template.Spec.Containers {
+			images = append(images, c.Image)
+		}
+
+		revisions = append(revisions, RevisionInfo{
+			Revision:  rev,
+			Name:      rs.Name,
+			Images:    images,
+			CreatedAt: rs.CreationTimestamp.Time,
+		})
+	}
+
+	return revisions, nil
+}
+
+type RollbackRequest struct {
+	Revision int64 `json:"revision"`
+}
+
+func (s *K8sService) RollbackDeployment(clusterID uuid.UUID, namespace, name string, revision int64) error {
+	client, err := s.getClientByClusterID(clusterID)
+	if err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	// Get the target ReplicaSet with the specified revision
+	deploy, err := client.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("get deployment: %w", err)
+	}
+
+	selector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
+	if err != nil {
+		return fmt.Errorf("parse selector: %w", err)
+	}
+
+	rsList, err := client.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: selector.String(),
+	})
+	if err != nil {
+		return fmt.Errorf("list replicasets: %w", err)
+	}
+
+	var targetRS *appsv1.ReplicaSet
+	for i, rs := range rsList.Items {
+		owned := false
+		for _, ref := range rs.OwnerReferences {
+			if ref.UID == deploy.UID {
+				owned = true
+				break
+			}
+		}
+		if !owned {
+			continue
+		}
+
+		revStr := rs.Annotations["deployment.kubernetes.io/revision"]
+		var rev int64
+		fmt.Sscanf(revStr, "%d", &rev)
+		if rev == revision {
+			targetRS = &rsList.Items[i]
+			break
+		}
+	}
+
+	if targetRS == nil {
+		return fmt.Errorf("revision %d not found", revision)
+	}
+
+	// Patch the deployment with the target RS's pod template
+	deploy.Spec.Template = targetRS.Spec.Template
+	_, err = client.AppsV1().Deployments(namespace).Update(ctx, deploy, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("update deployment: %w", err)
+	}
+
+	return nil
+}
+
+// --- Node Management ---
+
+func (s *K8sService) CordonNode(clusterID uuid.UUID, nodeName string) error {
+	client, err := s.getClientByClusterID(clusterID)
+	if err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+	node, err := client.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("get node: %w", err)
+	}
+
+	node.Spec.Unschedulable = true
+	_, err = client.CoreV1().Nodes().Update(ctx, node, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("cordon node: %w", err)
+	}
+
+	return nil
+}
+
+func (s *K8sService) UncordonNode(clusterID uuid.UUID, nodeName string) error {
+	client, err := s.getClientByClusterID(clusterID)
+	if err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+	node, err := client.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("get node: %w", err)
+	}
+
+	node.Spec.Unschedulable = false
+	_, err = client.CoreV1().Nodes().Update(ctx, node, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("uncordon node: %w", err)
+	}
+
+	return nil
+}
+
+func (s *K8sService) DrainNode(clusterID uuid.UUID, nodeName string) error {
+	client, err := s.getClientByClusterID(clusterID)
+	if err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	// First cordon the node
+	node, err := client.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("get node: %w", err)
+	}
+
+	node.Spec.Unschedulable = true
+	_, err = client.CoreV1().Nodes().Update(ctx, node, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("cordon node: %w", err)
+	}
+
+	// Evict pods (skip DaemonSet pods and mirror pods)
+	pods, err := client.CoreV1().Pods("").List(ctx, metav1.ListOptions{
+		FieldSelector: "spec.nodeName=" + nodeName,
+	})
+	if err != nil {
+		return fmt.Errorf("list pods on node: %w", err)
+	}
+
+	for _, pod := range pods.Items {
+		// Skip DaemonSet pods
+		isDaemonSet := false
+		for _, ref := range pod.OwnerReferences {
+			if ref.Kind == "DaemonSet" {
+				isDaemonSet = true
+				break
+			}
+		}
+		if isDaemonSet {
+			continue
+		}
+
+		// Skip mirror pods
+		if _, ok := pod.Annotations["kubernetes.io/config.mirror"]; ok {
+			continue
+		}
+
+		// Delete pod with grace period
+		gracePeriod := int64(30)
+		err := client.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
+			GracePeriodSeconds: &gracePeriod,
+		})
+		if err != nil {
+			log.Printf("Failed to evict pod %s/%s: %v", pod.Namespace, pod.Name, err)
+		}
+	}
+
+	return nil
+}
+
 // --- 内部方法 ---
 
 func (s *K8sService) getClient(kubeconfig string) (*kubernetes.Clientset, error) {

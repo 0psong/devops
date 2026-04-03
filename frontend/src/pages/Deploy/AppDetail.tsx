@@ -211,6 +211,7 @@ const AppDetail: React.FC = () => {
           dataSource={deployments}
           rowKey="id"
           loading={loading}
+          scroll={{ x: 1000 }}
           pagination={{ pageSize: 10, showTotal: (t) => `共 ${t} 条` }}
         />
       </Card>

@@ -1,6 +1,6 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Row, Col, Card, Statistic, Typography, Progress } from 'antd'
+import { Row, Col, Card, Statistic, Typography, Progress, Spin, message } from 'antd'
 import {
   DesktopOutlined,
   CloudServerOutlined,
@@ -13,12 +13,50 @@ import {
   ThunderboltOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons'
-import ReactECharts from 'echarts-for-react'
+import ReactEChartsCore from 'echarts-for-react/lib/core'
+import * as echarts from 'echarts/core'
+import { BarChart, LineChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+import dayjs from 'dayjs'
+import relativeTime from 'dayjs/plugin/relativeTime'
+import 'dayjs/locale/zh-cn'
+import { dashboardService, DashboardStats, DashboardActivity, DeployTrend } from '@/services/dashboard'
+
+echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, CanvasRenderer])
+
+dayjs.extend(relativeTime)
+dayjs.locale('zh-cn')
 
 const { Text } = Typography
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate()
+
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [activities, setActivities] = useState<DashboardActivity[]>([])
+  const [deployTrend, setDeployTrend] = useState<DeployTrend[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [statsRes, activitiesRes, trendRes] = await Promise.all([
+          dashboardService.getStats(),
+          dashboardService.getActivities(),
+          dashboardService.getDeployTrend(),
+        ])
+        setStats(statsRes.data)
+        setActivities(activitiesRes.data || [])
+        setDeployTrend(trendRes.data || [])
+      } catch {
+        message.error('获取仪表盘数据失败')
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
 
   const palette = {
     primary: '#0ea5e9',
@@ -136,7 +174,7 @@ const Dashboard: React.FC = () => {
     grid: { top: 20, right: 20, bottom: 30, left: 50 },
     xAxis: {
       type: 'category',
-      data: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+      data: deployTrend.map(d => d.date),
       axisLine: { lineStyle: { color: '#eef0f3' } },
       axisLabel: { color: palette.muted, fontSize: 11 },
       axisTick: { show: false },
@@ -149,7 +187,7 @@ const Dashboard: React.FC = () => {
     },
     series: [
       {
-        data: [5, 8, 12, 6, 10, 3, 2],
+        data: deployTrend.map(d => d.count),
         type: 'bar',
         barWidth: '50%',
         itemStyle: {
@@ -167,15 +205,6 @@ const Dashboard: React.FC = () => {
     ],
   }
 
-  const activities = [
-    { color: palette.primary, title: 'admin 部署了 payment-service 到生产环境', time: '5 分钟前' },
-    { color: palette.accent, title: 'web-gateway 健康检查恢复正常', time: '15 分钟前' },
-    { color: palette.warn, title: 'db-server-03 CPU 使用率超过 80%', time: '30 分钟前' },
-    { color: palette.primary, title: 'admin 更新了 redis 配置项', time: '1 小时前' },
-    { color: palette.accent, title: 'K8s 集群 prod-cluster 连接测试通过', time: '2 小时前' },
-    { color: palette.danger, title: 'api-server-02 SSH 连接失败', time: '3 小时前' },
-  ]
-
   const quickActions = [
     { icon: <PlusOutlined />, title: '添加主机', path: '/monitor/hosts' },
     { icon: <RocketOutlined />, title: '部署应用', path: '/deploy/apps' },
@@ -184,6 +213,7 @@ const Dashboard: React.FC = () => {
   ]
 
   return (
+    <Spin spinning={loading}>
     <div className="page-shell fade-in">
       <div className="page-hero">
         <div>
@@ -198,7 +228,7 @@ const Dashboard: React.FC = () => {
           <Card className="stat-card stat-card-blue" bordered={false}>
             <Statistic
               title="主机总数"
-              value={12}
+              value={stats?.host_total || 0}
               prefix={<DesktopOutlined />}
             />
           </Card>
@@ -207,7 +237,7 @@ const Dashboard: React.FC = () => {
           <Card className="stat-card stat-card-purple" bordered={false}>
             <Statistic
               title="应用总数"
-              value={8}
+              value={stats?.app_total || 0}
               prefix={<CloudServerOutlined />}
             />
           </Card>
@@ -216,7 +246,7 @@ const Dashboard: React.FC = () => {
           <Card className="stat-card stat-card-green" bordered={false}>
             <Statistic
               title="在线主机"
-              value={10}
+              value={stats?.host_online || 0}
               prefix={<CheckCircleOutlined />}
             />
           </Card>
@@ -225,7 +255,7 @@ const Dashboard: React.FC = () => {
           <Card className="stat-card stat-card-orange" bordered={false}>
             <Statistic
               title="告警数量"
-              value={2}
+              value={stats?.alert_total || 0}
               prefix={<WarningOutlined />}
             />
           </Card>
@@ -236,17 +266,17 @@ const Dashboard: React.FC = () => {
       <Row gutter={[20, 20]} style={{ marginTop: 20 }}>
         <Col xs={24} lg={8}>
           <Card className="chart-card" title="CPU 使用率" bordered={false}>
-            <ReactECharts option={cpuOption} style={{ height: 260 }} />
+            <ReactEChartsCore echarts={echarts} option={cpuOption} style={{ height: 260 }} />
           </Card>
         </Col>
         <Col xs={24} lg={8}>
           <Card className="chart-card" title="内存使用率" bordered={false}>
-            <ReactECharts option={memoryOption} style={{ height: 260 }} />
+            <ReactEChartsCore echarts={echarts} option={memoryOption} style={{ height: 260 }} />
           </Card>
         </Col>
         <Col xs={24} lg={8}>
           <Card className="chart-card" title="本周部署次数" bordered={false}>
-            <ReactECharts option={deployOption} style={{ height: 260 }} />
+            <ReactEChartsCore echarts={echarts} option={deployOption} style={{ height: 260 }} />
           </Card>
         </Col>
       </Row>
@@ -338,11 +368,11 @@ const Dashboard: React.FC = () => {
             <div>
               {activities.map((item, i) => (
                 <div className="activity-item" key={i}>
-                  <div className="activity-dot" style={{ background: item.color }} />
+                  <div className="activity-dot" style={{ background: palette.primary }} />
                   <div className="activity-content">
                     <div className="activity-title">{item.title}</div>
                   </div>
-                  <div className="activity-time">{item.time}</div>
+                  <div className="activity-time">{dayjs(item.created_at).fromNow()}</div>
                 </div>
               ))}
             </div>
@@ -389,7 +419,7 @@ const Dashboard: React.FC = () => {
                   </div>
                   <div>
                     <Text style={{ fontSize: 13, color: palette.muted }}>今日部署</Text>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: palette.ink }}>6 次</div>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: palette.ink }}>{stats?.deploy_today || 0} 次</div>
                   </div>
                 </div>
               </Col>
@@ -408,7 +438,7 @@ const Dashboard: React.FC = () => {
                   </div>
                   <div>
                     <Text style={{ fontSize: 13, color: palette.muted }}>待处理告警</Text>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: palette.warn }}>2 条</div>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: palette.warn }}>{stats?.alert_total || 0} 条</div>
                   </div>
                 </div>
               </Col>
@@ -427,7 +457,7 @@ const Dashboard: React.FC = () => {
                   </div>
                   <div>
                     <Text style={{ fontSize: 13, color: palette.muted }}>K8s 集群</Text>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: palette.ink }}>3 个</div>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: palette.ink }}>{stats?.cluster_total || 0} 个</div>
                   </div>
                 </div>
               </Col>
@@ -436,6 +466,7 @@ const Dashboard: React.FC = () => {
         </Col>
       </Row>
     </div>
+    </Spin>
   )
 }
 

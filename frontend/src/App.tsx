@@ -25,6 +25,15 @@ const ServiceList = React.lazy(() => import('@/pages/K8s/ServiceList'))
 const IngressList = React.lazy(() => import('@/pages/K8s/IngressList'))
 const ConfigMapList = React.lazy(() => import('@/pages/K8s/ConfigMapList'))
 const SecretList = React.lazy(() => import('@/pages/K8s/SecretList'))
+// Cloud
+const AccountList = React.lazy(() => import('@/pages/Cloud/AccountList'))
+const InstanceList = React.lazy(() => import('@/pages/Cloud/InstanceList'))
+const NodePoolList = React.lazy(() => import('@/pages/Cloud/NodePoolList'))
+// Pipeline V2
+const DefinitionList = React.lazy(() => import('@/pages/Pipeline/DefinitionList'))
+const RunDetail = React.lazy(() => import('@/pages/Pipeline/RunDetail'))
+const ArtifactList = React.lazy(() => import('@/pages/Pipeline/ArtifactList'))
+const ApprovalList = React.lazy(() => import('@/pages/Pipeline/ApprovalList'))
 
 const PageLoading = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
@@ -71,6 +80,15 @@ function App() {
                     {/* K8s - Config */}
                     <Route path="/k8s/config/configmaps" element={<ConfigMapList />} />
                     <Route path="/k8s/config/secrets" element={<SecretList />} />
+                    {/* Cloud */}
+                    <Route path="/cloud/accounts" element={<AccountList />} />
+                    <Route path="/cloud/instances" element={<InstanceList />} />
+                    <Route path="/cloud/nodepools" element={<NodePoolList />} />
+                    {/* Pipeline V2 */}
+                    <Route path="/pipeline/definitions" element={<DefinitionList />} />
+                    <Route path="/pipeline/runs/:id" element={<RunDetail />} />
+                    <Route path="/pipeline/artifacts" element={<ArtifactList />} />
+                    <Route path="/pipeline/approvals" element={<ApprovalList />} />
                     {/* Legacy redirects */}
                     <Route path="/k8s/services" element={<Navigate to="/k8s/network/services" replace />} />
                     <Route path="/k8s/pods" element={<Navigate to="/k8s/workloads/pods" replace />} />

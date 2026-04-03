@@ -270,6 +270,7 @@ export default function RolePermissionList() {
         loading={loading}
         columns={columns}
         dataSource={roles}
+        scroll={{ x: 900 }}
         pagination={false}
       />
 

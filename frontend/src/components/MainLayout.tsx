@@ -35,6 +35,9 @@ import {
   AuditOutlined,
   UsergroupAddOutlined,
   SafetyOutlined,
+  CloudUploadOutlined,
+  InboxOutlined,
+  CheckSquareOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { useAuthStore } from '@/stores/auth'
@@ -70,7 +73,10 @@ const menuItems: MenuProps['items'] = [
     children: [
       { key: '/deploy/apps', label: '应用管理', icon: <DeploymentUnitOutlined /> },
       { key: '/deploy/pipelines', label: 'CI/CD 流水线', icon: <BranchesOutlined /> },
+      { key: '/pipeline/definitions', label: '高级流水线', icon: <BranchesOutlined /> },
       { key: '/deploy/versions', label: '版本管理', icon: <TagsOutlined /> },
+      { key: '/pipeline/artifacts', label: '制品管理', icon: <InboxOutlined /> },
+      { key: '/pipeline/approvals', label: '待审批', icon: <CheckSquareOutlined /> },
     ],
   },
   {
@@ -106,6 +112,16 @@ const menuItems: MenuProps['items'] = [
           { key: '/k8s/config/secrets', label: '保密字典', icon: <LockOutlined /> },
         ],
       },
+    ],
+  },
+  {
+    key: '/cloud',
+    icon: <CloudUploadOutlined />,
+    label: '云资源管理',
+    children: [
+      { key: '/cloud/accounts', label: '云账号', icon: <SafetyOutlined /> },
+      { key: '/cloud/instances', label: '云实例', icon: <CloudServerOutlined /> },
+      { key: '/cloud/nodepools', label: '节点池', icon: <ClusterOutlined /> },
     ],
   },
   {
@@ -148,6 +164,15 @@ const breadcrumbMap: Record<string, string> = {
   '/k8s/config': '配置管理',
   '/k8s/config/configmaps': '配置项',
   '/k8s/config/secrets': '保密字典',
+  '/cloud': '云资源管理',
+  '/cloud/accounts': '云账号',
+  '/cloud/instances': '云实例',
+  '/cloud/nodepools': '节点池',
+  '/pipeline': '高级流水线',
+  '/pipeline/definitions': '流水线定义',
+  '/pipeline/runs': '运行详情',
+  '/pipeline/artifacts': '制品管理',
+  '/pipeline/approvals': '待审批',
   '/config': '配置中心',
   '/system': '系统管理',
   '/system/users': '用户管理',
@@ -235,14 +260,17 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     if (path.startsWith('/deploy/apps/')) return ['/deploy/apps']
     if (path.startsWith('/deploy/pipelines/')) return ['/deploy/pipelines']
     if (path.startsWith('/k8s/clusters/')) return ['/k8s/clusters']
+    if (path.startsWith('/pipeline/runs/')) return ['/pipeline/definitions']
+    if (path.startsWith('/pipeline/definitions/')) return ['/pipeline/definitions']
     return [path]
   }
 
   const getOpenKeys = () => {
     const path = location.pathname
     if (path.startsWith('/monitor')) return ['/monitor']
-    if (path.startsWith('/deploy')) return ['/deploy']
+    if (path.startsWith('/deploy') || path.startsWith('/pipeline')) return ['/deploy']
     if (path.startsWith('/k8s')) return ['/k8s']
+    if (path.startsWith('/cloud')) return ['/cloud']
     if (path.startsWith('/system')) return ['/system']
     return []
   }
@@ -328,7 +356,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           />
         )}
       </div>
-      <Layout style={{ marginLeft: actualWidth, transition: dragging.current ? 'none' : 'margin-left 0.2s' }}>
+      <Layout style={{ marginLeft: actualWidth, transition: dragging.current ? 'none' : 'margin-left 0.2s', overflow: 'hidden' }}>
         <Header
           className="app-header"
           style={{

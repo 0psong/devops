@@ -325,6 +325,7 @@ export default function AuditLogList() {
         columns={columns}
         dataSource={logs}
         size="small"
+        scroll={{ x: 1200 }}
         pagination={{
           current: page,
           pageSize,

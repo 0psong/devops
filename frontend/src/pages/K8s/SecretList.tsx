@@ -541,6 +541,7 @@ const SecretList: React.FC = () => {
           dataSource={filtered}
           rowKey={(r) => `${r.namespace}/${r.name}`}
           loading={loading}
+          scroll={{ x: 1200 }}
           pagination={{ pageSize: 20, showTotal: (t) => `共 ${t} 条` }}
         />
       </Card>

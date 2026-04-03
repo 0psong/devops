@@ -66,11 +66,9 @@ export default function GroupList() {
     setLoading(true)
     try {
       const res = await getGroups({ page, page_size: pageSize, keyword })
-      if (res.code === 0) {
-        setGroups(res.data.list || [])
-        setTotal(res.data.total)
-      }
-    } catch (e) {
+      setGroups(res.data.list || [])
+      setTotal(res.data.total)
+    } catch {
       message.error('获取分组列表失败')
     } finally {
       setLoading(false)
@@ -95,14 +93,10 @@ export default function GroupList() {
 
   const handleDelete = async (id: string) => {
     try {
-      const res = await deleteGroup(id)
-      if (res.code === 0) {
-        message.success('删除成功')
-        fetchGroups()
-      } else {
-        message.error(res.message || '删除失败')
-      }
-    } catch (e) {
+      await deleteGroup(id)
+      message.success('删除成功')
+      fetchGroups()
+    } catch {
       message.error('删除失败')
     }
   }
@@ -110,21 +104,16 @@ export default function GroupList() {
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields()
-      let res
       if (editingGroup) {
-        res = await updateGroup(editingGroup.id, values)
+        await updateGroup(editingGroup.id, values)
       } else {
-        res = await createGroup(values)
+        await createGroup(values)
       }
-      if (res.code === 0) {
-        message.success(editingGroup ? '更新成功' : '创建成功')
-        setModalVisible(false)
-        fetchGroups()
-      } else {
-        message.error(res.message || '操作失败')
-      }
-    } catch (e) {
-      // 表单验证失败
+      message.success(editingGroup ? '更新成功' : '创建成功')
+      setModalVisible(false)
+      fetchGroups()
+    } catch {
+      // 表单验证失败或 API 错误（interceptor 已处理提示）
     }
   }
 
@@ -136,10 +125,8 @@ export default function GroupList() {
         getGroupMembers(group.id),
         userService.list({ page: 1, page_size: 1000 })
       ])
-      if (membersRes.code === 0) {
-        setMembers(membersRes.data || [])
-        setSelectedUserKeys((membersRes.data || []).map((u: User) => u.id))
-      }
+      setMembers(membersRes.data || [])
+      setSelectedUserKeys((membersRes.data || []).map((u: User) => u.id))
       if (usersRes.data?.list) {
         setAllUsers(usersRes.data.list || [])
       }
@@ -196,15 +183,11 @@ export default function GroupList() {
   const handleSaveRoles = async () => {
     if (!currentGroup) return
     try {
-      const res = await setGroupRoles(currentGroup.id, selectedRoleIds)
-      if (res.code === 0) {
-        message.success('角色分配成功')
-        setRoleModalVisible(false)
-        fetchGroups()
-      } else {
-        message.error(res.message || '操作失败')
-      }
-    } catch (e) {
+      await setGroupRoles(currentGroup.id, selectedRoleIds)
+      message.success('角色分配成功')
+      setRoleModalVisible(false)
+      fetchGroups()
+    } catch {
       message.error('分配角色失败')
     }
   }
@@ -308,6 +291,7 @@ export default function GroupList() {
         loading={loading}
         columns={columns}
         dataSource={groups}
+        scroll={{ x: 1000 }}
         pagination={{
           current: page,
           pageSize,

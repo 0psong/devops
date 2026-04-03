@@ -338,6 +338,7 @@ const HostList: React.FC = () => {
           dataSource={hosts}
           rowKey="id"
           loading={loading}
+          scroll={{ x: 1200 }}
           pagination={{
             current: page,
             pageSize,

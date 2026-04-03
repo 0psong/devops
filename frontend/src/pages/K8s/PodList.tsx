@@ -40,7 +40,7 @@ const PodList: React.FC = () => {
   const [keyword, setKeyword] = useState('')
   const [detailVisible, setDetailVisible] = useState(false)
   const [currentPod, setCurrentPod] = useState<K8sResource | null>(null)
-  const [detailTab, setDetailTab] = useState<'detail' | 'yaml'>('detail')
+  const [detailTab, setDetailTab] = useState<'detail' | 'yaml' | 'logs'>('detail')
   const [detailYaml, setDetailYaml] = useState('')
   const [detailYamlLoading, setDetailYamlLoading] = useState(false)
   const [yamlVisible, setYamlVisible] = useState(false)
@@ -52,6 +52,12 @@ const PodList: React.FC = () => {
   const [historyVisible, setHistoryVisible] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyItems, setHistoryItems] = useState<K8sYamlHistory[]>([])
+  const [logText, setLogText] = useState('')
+  const [logLoading, setLogLoading] = useState(false)
+  const [logContainer, setLogContainer] = useState<string>('')
+  const [containers, setContainers] = useState<string[]>([])
+  const [logTailLines, setLogTailLines] = useState(200)
+  const [logPrevious] = useState(false)
 
   const fetchClusters = async () => {
     try {
@@ -109,6 +115,38 @@ const PodList: React.FC = () => {
       message.error('获取 YAML 失败')
     } finally {
       setDetailYamlLoading(false)
+    }
+  }
+
+  const fetchContainers = async (pod: K8sResource) => {
+    if (!selectedCluster) return
+    try {
+      const res = await k8sService.getPodContainers(selectedCluster, { pod: pod.name, namespace: pod.namespace })
+      const list = res.data || []
+      setContainers(list)
+      if (list.length > 0) setLogContainer(list[0])
+    } catch {
+      message.error('获取容器列表失败')
+    }
+  }
+
+  const fetchPodLogs = async (pod?: K8sResource) => {
+    const target = pod || currentPod
+    if (!target || !selectedCluster) return
+    setLogLoading(true)
+    try {
+      const res = await k8sService.getPodLogs(selectedCluster, {
+        pod: target.name,
+        namespace: target.namespace,
+        container: logContainer || undefined,
+        tail: logTailLines,
+        previous: logPrevious,
+      })
+      setLogText(res.data || '暂无日志')
+    } catch {
+      message.error('获取日志失败')
+    } finally {
+      setLogLoading(false)
     }
   }
 
@@ -300,9 +338,20 @@ const PodList: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 80,
+      width: 120,
       render: (_, record) => (
-        <Button type="link" size="small" onClick={() => openYamlEditor(record)}>YAML</Button>
+        <Space>
+          <Button type="link" size="small" onClick={() => {
+            setCurrentPod(record)
+            setDetailTab('logs')
+            setDetailYaml('')
+            setLogText('')
+            setDetailVisible(true)
+            fetchContainers(record)
+            fetchPodLogs(record)
+          }}>日志</Button>
+          <Button type="link" size="small" onClick={() => openYamlEditor(record)}>YAML</Button>
+        </Space>
       ),
     },
   ]
@@ -374,6 +423,7 @@ const PodList: React.FC = () => {
           dataSource={filtered}
           rowKey={(r) => `${r.namespace}/${r.name}`}
           loading={loading}
+          scroll={{ x: 1200 }}
           pagination={{ pageSize: 20, showTotal: (t) => `共 ${t} 条` }}
         />
       </Card>
@@ -388,10 +438,14 @@ const PodList: React.FC = () => {
           <Tabs
             activeKey={detailTab}
             onChange={(key) => {
-              const next = key as 'detail' | 'yaml'
+              const next = key as 'detail' | 'yaml' | 'logs'
               setDetailTab(next)
               if (next === 'yaml') {
                 loadDetailYaml()
+              }
+              if (next === 'logs' && currentPod) {
+                fetchContainers(currentPod)
+                fetchPodLogs(currentPod)
               }
             }}
             items={[
@@ -429,6 +483,57 @@ const PodList: React.FC = () => {
                     <Spin spinning={detailYamlLoading}>
                       <pre style={{ background: '#f8fafc', padding: 16, borderRadius: 8, overflow: 'auto', maxHeight: 420, fontSize: 12 }}>
                         {detailYaml || '暂无 YAML'}
+                      </pre>
+                    </Spin>
+                  </>
+                ),
+              },
+              {
+                key: 'logs',
+                label: '日志',
+                children: (
+                  <>
+                    <Space style={{ marginBottom: 12 }}>
+                      {containers.length > 1 && (
+                        <Select
+                          size="small"
+                          style={{ width: 200 }}
+                          value={logContainer || undefined}
+                          onChange={(v) => setLogContainer(v)}
+                          placeholder="选择容器"
+                        >
+                          {containers.map((c) => (
+                            <Select.Option key={c} value={c}>{c}</Select.Option>
+                          ))}
+                        </Select>
+                      )}
+                      <Select
+                        size="small"
+                        style={{ width: 120 }}
+                        value={logTailLines}
+                        onChange={(v) => setLogTailLines(v)}
+                      >
+                        <Select.Option value={100}>100 行</Select.Option>
+                        <Select.Option value={200}>200 行</Select.Option>
+                        <Select.Option value={500}>500 行</Select.Option>
+                        <Select.Option value={1000}>1000 行</Select.Option>
+                      </Select>
+                      <Button size="small" onClick={() => fetchPodLogs()}>刷新</Button>
+                    </Space>
+                    <Spin spinning={logLoading}>
+                      <pre style={{
+                        background: '#1a1a2e',
+                        color: '#e0e0e0',
+                        padding: 16,
+                        borderRadius: 8,
+                        overflow: 'auto',
+                        maxHeight: 500,
+                        fontSize: 12,
+                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-all',
+                      }}>
+                        {logText || '暂无日志'}
                       </pre>
                     </Spin>
                   </>

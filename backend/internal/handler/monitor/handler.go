@@ -1,6 +1,8 @@
 package monitor
 
 import (
+	"strconv"
+
 	"devops/internal/pkg/response"
 	"devops/internal/service"
 
@@ -278,21 +280,9 @@ func getIntParam(c *gin.Context, key string, defaultVal int) int {
 	if val == "" {
 		return defaultVal
 	}
-	var result int
-	if _, err := parseIntFromString(val, &result); err != nil {
+	n, err := strconv.Atoi(val)
+	if err != nil {
 		return defaultVal
 	}
-	return result
-}
-
-func parseIntFromString(s string, result *int) (int, error) {
-	var n int
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return 0, nil
-		}
-		n = n*10 + int(c-'0')
-	}
-	*result = n
-	return n, nil
+	return n
 }

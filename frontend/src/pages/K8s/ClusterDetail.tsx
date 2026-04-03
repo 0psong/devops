@@ -341,7 +341,7 @@ const ClusterDetail: React.FC = () => {
       children: (
         <>
           <div style={{ marginBottom: 16 }}>{nsFilter}</div>
-          <Table columns={deploymentColumns} dataSource={deployments} rowKey="name" pagination={{ pageSize: 20 }} />
+          <Table columns={deploymentColumns} dataSource={deployments} rowKey="name" scroll={{ x: 1000 }} pagination={{ pageSize: 20 }} />
         </>
       ),
     },
@@ -351,7 +351,7 @@ const ClusterDetail: React.FC = () => {
       children: (
         <>
           <div style={{ marginBottom: 16 }}>{nsFilter}</div>
-          <Table columns={podColumns} dataSource={pods} rowKey="name" pagination={{ pageSize: 20 }} />
+          <Table columns={podColumns} dataSource={pods} rowKey="name" scroll={{ x: 1000 }} pagination={{ pageSize: 20 }} />
         </>
       ),
     },
@@ -361,7 +361,7 @@ const ClusterDetail: React.FC = () => {
       children: (
         <>
           <div style={{ marginBottom: 16 }}>{nsFilter}</div>
-          <Table columns={serviceColumns} dataSource={services} rowKey="name" pagination={{ pageSize: 20 }} />
+          <Table columns={serviceColumns} dataSource={services} rowKey="name" scroll={{ x: 1000 }} pagination={{ pageSize: 20 }} />
         </>
       ),
     },

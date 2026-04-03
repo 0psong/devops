@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   Card,
   Table,
@@ -25,63 +25,18 @@ import {
   RocketOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { appService, Application } from '@/services/app'
-
-interface AppVersion {
-  id: string
-  app_id: string
-  app_name: string
-  version: string
-  branch: string
-  commit_id: string
-  commit_msg: string
-  build_status: 'success' | 'failed' | 'building' | 'pending'
-  is_current: boolean
-  deploy_count: number
-  created_by: string
-  created_at: string
-  changelog: string
-}
-
-// Mock data
-const mockVersions: AppVersion[] = [
-  {
-    id: '1', app_id: '1', app_name: 'web-frontend', version: 'v2.1.0', branch: 'main',
-    commit_id: 'a1b2c3d', commit_msg: 'feat: 添加用户仪表盘', build_status: 'success',
-    is_current: true, deploy_count: 3, created_by: 'admin', created_at: '2026-01-27T09:00:00Z',
-    changelog: '- 新增用户仪表盘\n- 优化登录流程\n- 修复侧边栏样式问题',
-  },
-  {
-    id: '2', app_id: '1', app_name: 'web-frontend', version: 'v2.0.1', branch: 'main',
-    commit_id: 'e4f5g6h', commit_msg: 'fix: 修复登录跳转 bug', build_status: 'success',
-    is_current: false, deploy_count: 5, created_by: 'admin', created_at: '2026-01-25T14:00:00Z',
-    changelog: '- 修复登录后未正确跳转的问题\n- 修复权限校验逻辑',
-  },
-  {
-    id: '3', app_id: '1', app_name: 'web-frontend', version: 'v2.0.0', branch: 'release/v2.0',
-    commit_id: 'i7j8k9l', commit_msg: 'release: v2.0.0 正式发布', build_status: 'success',
-    is_current: false, deploy_count: 8, created_by: 'dev01', created_at: '2026-01-20T10:00:00Z',
-    changelog: '- 全新 UI 改版\n- 新增监控模块\n- 新增 K8s 集群管理\n- 性能优化',
-  },
-  {
-    id: '4', app_id: '2', app_name: 'api-gateway', version: 'v1.5.0', branch: 'main',
-    commit_id: 'm0n1o2p', commit_msg: 'feat: 添加限流中间件', build_status: 'success',
-    is_current: true, deploy_count: 2, created_by: 'admin', created_at: '2026-01-26T16:00:00Z',
-    changelog: '- 新增请求限流\n- 添加 API 审计日志',
-  },
-  {
-    id: '5', app_id: '2', app_name: 'api-gateway', version: 'v1.4.2', branch: 'develop',
-    commit_id: 'q3r4s5t', commit_msg: 'fix: 修复连接池泄漏', build_status: 'success',
-    is_current: false, deploy_count: 4, created_by: 'dev01', created_at: '2026-01-22T11:00:00Z',
-    changelog: '- 修复数据库连接池泄漏\n- 优化日志输出',
-  },
-]
+import { versionService, AppVersion } from '@/services/version'
 
 const PipelineList: React.FC = () => {
-  const [versions, setVersions] = useState<AppVersion[]>(mockVersions)
+  const [versions, setVersions] = useState<AppVersion[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
   const [loading, setLoading] = useState(false)
   const [apps, setApps] = useState<Application[]>([])
   const [selectedApp, setSelectedApp] = useState<string>('')
@@ -89,6 +44,26 @@ const PipelineList: React.FC = () => {
   const [detailVisible, setDetailVisible] = useState(false)
   const [currentVersion, setCurrentVersion] = useState<AppVersion | null>(null)
   const [form] = Form.useForm()
+
+  const fetchVersions = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params: { page: number; page_size: number; app_id?: string } = {
+        page,
+        page_size: pageSize,
+      }
+      if (selectedApp) {
+        params.app_id = selectedApp
+      }
+      const res = await versionService.list(params)
+      setVersions(res.data.list || [])
+      setTotal(res.data.total || 0)
+    } catch {
+      message.error('获取版本列表失败')
+    } finally {
+      setLoading(false)
+    }
+  }, [page, pageSize, selectedApp])
 
   useEffect(() => {
     const fetchApps = async () => {
@@ -100,50 +75,59 @@ const PipelineList: React.FC = () => {
     fetchApps()
   }, [])
 
-  const filtered = versions.filter((v) =>
-    !selectedApp || v.app_id === selectedApp
-  )
+  useEffect(() => {
+    fetchVersions()
+  }, [fetchVersions])
 
-  const currentCount = filtered.filter((v) => v.is_current).length
+  const currentCount = versions.filter((v) => v.is_current).length
 
   const handleCreate = async () => {
     try {
       const values = await form.validateFields()
-      const newVersion: AppVersion = {
-        id: String(Date.now()),
+      await versionService.create({
         app_id: values.app_id,
-        app_name: apps.find((a) => a.id === values.app_id)?.name || '',
         version: values.version,
-        branch: values.branch || 'main',
-        commit_id: Math.random().toString(36).slice(2, 9),
-        commit_msg: values.commit_msg || '',
-        build_status: 'pending',
-        is_current: false,
-        deploy_count: 0,
-        created_by: 'admin',
-        created_at: new Date().toISOString(),
-        changelog: values.changelog || '',
-      }
-      setVersions([newVersion, ...versions])
+        branch: values.branch || undefined,
+        commit_id: values.commit_id || undefined,
+        commit_msg: values.commit_msg || undefined,
+        changelog: values.changelog || undefined,
+      })
       setModalVisible(false)
       message.success('版本已创建')
-    } catch { message.error('创建版本失败') }
+      fetchVersions()
+    } catch {
+      message.error('创建版本失败')
+    }
   }
 
-  const handleRollback = (v: AppVersion) => {
-    setVersions(versions.map((item) => ({
-      ...item,
-      is_current: item.app_id === v.app_id ? item.id === v.id : item.is_current,
-    })))
-    message.success(`已回滚到 ${v.version}`)
+  const handleRollback = async (v: AppVersion) => {
+    try {
+      await versionService.rollback(v.id)
+      message.success(`已回滚到 ${v.version}`)
+      fetchVersions()
+    } catch {
+      message.error('回滚失败')
+    }
   }
 
-  const handleDeploy = (v: AppVersion) => {
-    setVersions(versions.map((item) =>
-      item.id === v.id ? { ...item, deploy_count: item.deploy_count + 1, is_current: true } :
-      item.app_id === v.app_id ? { ...item, is_current: false } : item
-    ))
-    message.success(`${v.version} 部署已触发`)
+  const handleDeploy = async (v: AppVersion) => {
+    try {
+      await versionService.deploy(v.id)
+      message.success(`${v.version} 部署已触发`)
+      fetchVersions()
+    } catch {
+      message.error('部署失败')
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    try {
+      await versionService.delete(id)
+      message.success('删除成功')
+      fetchVersions()
+    } catch {
+      message.error('删除失败')
+    }
   }
 
   const columns: ColumnsType<AppVersion> = [
@@ -163,10 +147,9 @@ const PipelineList: React.FC = () => {
     },
     {
       title: '应用',
-      dataIndex: 'app_name',
       key: 'app_name',
       width: 140,
-      render: (v: string) => <Tag>{v}</Tag>,
+      render: (_, record) => <Tag>{record.app?.name || '-'}</Tag>,
     },
     {
       title: '分支',
@@ -221,7 +204,7 @@ const PipelineList: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 180,
+      width: 220,
       render: (_, record) => (
         <Space>
           <Tooltip title="查看">
@@ -237,6 +220,11 @@ const PipelineList: React.FC = () => {
               </Tooltip>
             </Popconfirm>
           )}
+          <Popconfirm title="确定删除此版本?" onConfirm={() => handleDelete(record.id)}>
+            <Tooltip title="删除">
+              <Button size="small" danger icon={<DeleteOutlined />} />
+            </Tooltip>
+          </Popconfirm>
         </Space>
       ),
     },
@@ -258,13 +246,13 @@ const PipelineList: React.FC = () => {
 
       <div className="metric-grid">
         <Card className="metric-card metric-card--primary" bordered={false}>
-          <Statistic title="总版本数" value={filtered.length} prefix={<TagsOutlined style={{ color: '#0ea5e9' }} />} />
+          <Statistic title="总版本数" value={total} prefix={<TagsOutlined style={{ color: '#0ea5e9' }} />} />
         </Card>
         <Card className="metric-card metric-card--success" bordered={false}>
           <Statistic title="当前版本" value={currentCount} prefix={<CheckCircleOutlined style={{ color: '#22c55e' }} />} />
         </Card>
         <Card className="metric-card metric-card--warning" bordered={false}>
-          <Statistic title="待部署" value={filtered.filter((v) => v.deploy_count === 0).length} prefix={<ClockCircleOutlined style={{ color: '#f59e0b' }} />} />
+          <Statistic title="待部署" value={versions.filter((v) => v.deploy_count === 0).length} prefix={<ClockCircleOutlined style={{ color: '#f59e0b' }} />} />
         </Card>
       </div>
 
@@ -276,7 +264,7 @@ const PipelineList: React.FC = () => {
               placeholder="全部应用"
               allowClear
               value={selectedApp || undefined}
-              onChange={(v) => setSelectedApp(v || '')}
+              onChange={(v) => { setSelectedApp(v || ''); setPage(1) }}
             >
               {apps.map((a) => (
                 <Select.Option key={a.id} value={a.id}>{a.name}</Select.Option>
@@ -284,15 +272,21 @@ const PipelineList: React.FC = () => {
             </Select>
           </div>
           <div className="toolbar-right">
-            <Button icon={<ReloadOutlined />} onClick={() => setLoading(false)}>刷新</Button>
+            <Button icon={<ReloadOutlined />} onClick={() => fetchVersions()}>刷新</Button>
           </div>
         </div>
         <Table
           columns={columns}
-          dataSource={filtered}
+          dataSource={versions}
           rowKey="id"
           loading={loading}
-          pagination={{ pageSize: 10, showTotal: (t) => `共 ${t} 条` }}
+          pagination={{
+            current: page,
+            pageSize: pageSize,
+            total: total,
+            showTotal: (t) => `共 ${t} 条`,
+            onChange: (p, ps) => { setPage(p); setPageSize(ps) },
+          }}
           scroll={{ x: 1400 }}
         />
       </Card>
@@ -318,6 +312,9 @@ const PipelineList: React.FC = () => {
           <Form.Item name="branch" label="分支">
             <Input placeholder="main" />
           </Form.Item>
+          <Form.Item name="commit_id" label="Commit ID">
+            <Input placeholder="a1b2c3d" />
+          </Form.Item>
           <Form.Item name="commit_msg" label="提交信息">
             <Input placeholder="feat: 新功能描述" />
           </Form.Item>
@@ -342,7 +339,7 @@ const PipelineList: React.FC = () => {
                   {currentVersion.is_current && <Tag color="green">当前版本</Tag>}
                 </Space>
               </Descriptions.Item>
-              <Descriptions.Item label="应用">{currentVersion.app_name}</Descriptions.Item>
+              <Descriptions.Item label="应用">{currentVersion.app?.name || '-'}</Descriptions.Item>
               <Descriptions.Item label="分支">{currentVersion.branch}</Descriptions.Item>
               <Descriptions.Item label="Commit">{currentVersion.commit_id}</Descriptions.Item>
               <Descriptions.Item label="提交信息">{currentVersion.commit_msg}</Descriptions.Item>
@@ -352,7 +349,6 @@ const PipelineList: React.FC = () => {
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="部署次数">{currentVersion.deploy_count}</Descriptions.Item>
-              <Descriptions.Item label="创建人">{currentVersion.created_by}</Descriptions.Item>
               <Descriptions.Item label="创建时间">
                 {dayjs(currentVersion.created_at).format('YYYY-MM-DD HH:mm:ss')}
               </Descriptions.Item>

@@ -313,6 +313,7 @@ body::before {
   padding: 0;
   background: transparent;
   min-height: calc(100vh - 64px - 48px);
+  overflow: hidden;
 }
 
 /* ===== Page Layout ===== */
@@ -320,6 +321,8 @@ body::before {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .page-hero {
@@ -603,6 +606,7 @@ body::before {
 
 .section-card .ant-card-body {
   padding: 20px 24px;
+  overflow-x: auto;
 }
 
 /* ===== Table Wrapper ===== */
@@ -910,12 +914,17 @@ body::before {
 }
 
 .ant-pagination-item-active {
-  background: linear-gradient(135deg, #0ea5e9 0%, #14b8a6 100%);
-  border-color: transparent;
+  background: #1677ff !important;
+  border-color: #1677ff !important;
 }
 
-.ant-pagination-item-active a {
-  color: #fff;
+.ant-pagination-item-active a,
+.ant-pagination-item-active:hover a {
+  color: #fff !important;
+}
+
+.ant-pagination-total-text {
+  color: var(--ink-muted);
 }
 
 /* ===== Empty ===== */
