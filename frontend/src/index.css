@@ -740,6 +740,17 @@ body::before {
   flex-shrink: 0;
 }
 
+/* ===== Module Workbench Pages ===== */
+.module-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.page-hero.compact {
+  align-items: center;
+}
+
 /* ===== Buttons ===== */
 .ant-btn-primary {
   background: linear-gradient(135deg, #0ea5e9 0%, #14b8a6 100%);

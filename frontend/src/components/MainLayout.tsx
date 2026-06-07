@@ -35,9 +35,14 @@ import {
   AuditOutlined,
   UsergroupAddOutlined,
   SafetyOutlined,
-  CloudUploadOutlined,
   InboxOutlined,
   CheckSquareOutlined,
+  AppstoreOutlined,
+  AlertOutlined,
+  FileSearchOutlined,
+  LineChartOutlined,
+  ScheduleOutlined,
+  ControlOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { useAuthStore } from '@/stores/auth'
@@ -56,38 +61,44 @@ const menuItems: MenuProps['items'] = [
   {
     key: '/dashboard',
     icon: <DashboardOutlined />,
-    label: '仪表盘',
+    label: '概览',
   },
   {
-    key: '/monitor',
-    icon: <DesktopOutlined />,
-    label: '监控中心',
+    key: '/service-catalog',
+    icon: <AppstoreOutlined />,
+    label: '服务目录',
     children: [
-      { key: '/monitor/hosts', label: '主机管理' },
+      { key: '/service-catalog/services', label: '服务列表', icon: <AppstoreOutlined /> },
+      { key: '/service-catalog/dependencies', label: '依赖关系', icon: <GatewayOutlined /> },
+      { key: '/service-catalog/docs', label: '文档与 Runbook', icon: <FileTextOutlined /> },
     ],
   },
   {
-    key: '/deploy',
-    icon: <CloudServerOutlined />,
-    label: '部署中心',
+    key: '/delivery',
+    icon: <BranchesOutlined />,
+    label: '发布交付',
     children: [
-      { key: '/deploy/apps', label: '应用管理', icon: <DeploymentUnitOutlined /> },
-      { key: '/deploy/pipelines', label: 'CI/CD 流水线', icon: <BranchesOutlined /> },
-      { key: '/pipeline/definitions', label: '高级流水线', icon: <BranchesOutlined /> },
+      { key: '/pipeline/definitions', label: '流水线定义', icon: <BranchesOutlined /> },
+      { key: '/deploy/pipelines', label: '流水线运行', icon: <DeploymentUnitOutlined /> },
+      { key: '/delivery/releases', label: '发布单', icon: <ScheduleOutlined /> },
       { key: '/deploy/versions', label: '版本管理', icon: <TagsOutlined /> },
       { key: '/pipeline/artifacts', label: '制品管理', icon: <InboxOutlined /> },
-      { key: '/pipeline/approvals', label: '待审批', icon: <CheckSquareOutlined /> },
+      { key: '/pipeline/approvals', label: '发布审批', icon: <CheckSquareOutlined /> },
     ],
   },
   {
-    key: '/k8s',
-    icon: <ClusterOutlined />,
-    label: 'Kubernetes',
+    key: '/resources',
+    icon: <CloudServerOutlined />,
+    label: '资源运维',
     children: [
-      { key: '/k8s/clusters', label: '集群管理', icon: <ClusterOutlined /> },
+      { key: '/monitor/hosts', label: '主机管理', icon: <DesktopOutlined /> },
+      { key: '/cloud/accounts', label: '云账号', icon: <SafetyOutlined /> },
+      { key: '/cloud/instances', label: '云实例', icon: <CloudServerOutlined /> },
+      { key: '/cloud/nodepools', label: '节点池', icon: <ClusterOutlined /> },
+      { key: '/k8s/clusters', label: 'K8s 集群', icon: <ClusterOutlined /> },
       {
         type: 'group',
-        label: '工作负载',
+        label: 'Kubernetes 资源',
         children: [
           { key: '/k8s/workloads/deployments', label: '无状态', icon: <DeploymentUnitOutlined /> },
           { key: '/k8s/workloads/statefulsets', label: '有状态', icon: <DatabaseOutlined /> },
@@ -98,58 +109,57 @@ const menuItems: MenuProps['items'] = [
       },
       {
         type: 'group',
-        label: '网络',
+        label: '网络与配置',
         children: [
           { key: '/k8s/network/services', label: '服务', icon: <ApiOutlined /> },
           { key: '/k8s/network/ingresses', label: '路由', icon: <GatewayOutlined /> },
-        ],
-      },
-      {
-        type: 'group',
-        label: '配置管理',
-        children: [
           { key: '/k8s/config/configmaps', label: '配置项', icon: <FileTextOutlined /> },
           { key: '/k8s/config/secrets', label: '保密字典', icon: <LockOutlined /> },
+          { key: '/config', label: '配置中心', icon: <SettingOutlined /> },
         ],
       },
     ],
   },
   {
-    key: '/cloud',
-    icon: <CloudUploadOutlined />,
-    label: '云资源管理',
+    key: '/observability',
+    icon: <AlertOutlined />,
+    label: '观测告警',
     children: [
-      { key: '/cloud/accounts', label: '云账号', icon: <SafetyOutlined /> },
-      { key: '/cloud/instances', label: '云实例', icon: <CloudServerOutlined /> },
-      { key: '/cloud/nodepools', label: '节点池', icon: <ClusterOutlined /> },
+      { key: '/observability/alerts', label: '告警中心', icon: <AlertOutlined /> },
+      { key: '/observability/events', label: '事件中心', icon: <FileSearchOutlined /> },
+      { key: '/observability/logs', label: '日志查询', icon: <FileTextOutlined /> },
+      { key: '/observability/metrics', label: '指标监控', icon: <LineChartOutlined /> },
     ],
   },
   {
-    key: '/config',
-    icon: <SettingOutlined />,
-    label: '配置中心',
-  },
-  {
-    key: '/system',
+    key: '/governance',
     icon: <TeamOutlined />,
-    label: '系统管理',
+    label: '系统治理',
     children: [
       { key: '/system/users', label: '用户管理', icon: <UserOutlined /> },
       { key: '/system/groups', label: '用户分组', icon: <UsergroupAddOutlined /> },
       { key: '/system/roles', label: '角色权限', icon: <SafetyOutlined /> },
       { key: '/system/audit-logs', label: '审计日志', icon: <AuditOutlined /> },
+      { key: '/governance/settings', label: '平台设置', icon: <ControlOutlined /> },
     ],
   },
 ]
 
 const breadcrumbMap: Record<string, string> = {
-  '/dashboard': '仪表盘',
+  '/dashboard': '概览',
+  '/service-catalog': '服务目录',
+  '/service-catalog/services': '服务列表',
+  '/service-catalog/dependencies': '依赖关系',
+  '/service-catalog/docs': '文档与 Runbook',
   '/monitor': '监控中心',
   '/monitor/hosts': '主机管理',
-  '/deploy': '部署中心',
+  '/delivery': '发布交付',
+  '/delivery/releases': '发布单',
+  '/deploy': '发布交付',
   '/deploy/apps': '应用管理',
-  '/deploy/pipelines': 'CI/CD 流水线',
+  '/deploy/pipelines': '流水线运行',
   '/deploy/versions': '版本管理',
+  '/resources': '资源运维',
   '/k8s': 'Kubernetes',
   '/k8s/clusters': '集群管理',
   '/k8s/workloads': '工作负载',
@@ -168,13 +178,20 @@ const breadcrumbMap: Record<string, string> = {
   '/cloud/accounts': '云账号',
   '/cloud/instances': '云实例',
   '/cloud/nodepools': '节点池',
-  '/pipeline': '高级流水线',
+  '/pipeline': '发布交付',
   '/pipeline/definitions': '流水线定义',
   '/pipeline/runs': '运行详情',
   '/pipeline/artifacts': '制品管理',
-  '/pipeline/approvals': '待审批',
+  '/pipeline/approvals': '发布审批',
+  '/observability': '观测告警',
+  '/observability/alerts': '告警中心',
+  '/observability/events': '事件中心',
+  '/observability/logs': '日志查询',
+  '/observability/metrics': '指标监控',
   '/config': '配置中心',
-  '/system': '系统管理',
+  '/governance': '系统治理',
+  '/governance/settings': '平台设置',
+  '/system': '系统治理',
   '/system/users': '用户管理',
   '/system/groups': '用户分组',
   '/system/roles': '角色权限',
@@ -257,7 +274,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
   const getSelectedKeys = () => {
     const path = location.pathname
-    if (path.startsWith('/deploy/apps/')) return ['/deploy/apps']
+    if (path.startsWith('/deploy/apps/')) return ['/service-catalog/services']
     if (path.startsWith('/deploy/pipelines/')) return ['/deploy/pipelines']
     if (path.startsWith('/k8s/clusters/')) return ['/k8s/clusters']
     if (path.startsWith('/pipeline/runs/')) return ['/pipeline/definitions']
@@ -267,11 +284,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
   const getOpenKeys = () => {
     const path = location.pathname
-    if (path.startsWith('/monitor')) return ['/monitor']
-    if (path.startsWith('/deploy') || path.startsWith('/pipeline')) return ['/deploy']
-    if (path.startsWith('/k8s')) return ['/k8s']
-    if (path.startsWith('/cloud')) return ['/cloud']
-    if (path.startsWith('/system')) return ['/system']
+    if (path.startsWith('/service-catalog') || path.startsWith('/deploy/apps')) return ['/service-catalog']
+    if (path.startsWith('/delivery') || path.startsWith('/deploy/pipelines') || path.startsWith('/deploy/versions') || path.startsWith('/pipeline')) return ['/delivery']
+    if (path.startsWith('/resources') || path.startsWith('/monitor') || path.startsWith('/k8s') || path.startsWith('/cloud') || path.startsWith('/config')) return ['/resources']
+    if (path.startsWith('/observability')) return ['/observability']
+    if (path.startsWith('/governance') || path.startsWith('/system')) return ['/governance']
     return []
   }
 
